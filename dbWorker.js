@@ -1,23 +1,24 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
-const url = "https://www.iban.com/exchange-rates";
+const { parentPort } = require('worker_threads');
+const admin = require('firebase-admin');
+const serviceAccount = require('./firebase-credentials.json');
 
-const fetchData = async () => {
-  console.log("Crawling data...");
+admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 
-  const response = await axios(url);
-  if(response.status !== 200) throw new Error("Could not fetch data"); 
-  return response.data;
-}
+const db = admin.firestore();
 
-fetchData()
-.then(html => {
-  const $ = cheerio.load(html);
-  const dataTable = $('.table.table-bordered.table-hover.downloads > tbody > tr');
-  dataTable.each(function (){
-    let title = $(this).find('td').text();
-    console.log(title);
+const date = new Date();
+const currDate = `${date.getDate()}-${date.getMonth()}-${date.getFullYear()}`;
+
+//receive crawled data from main thread
+parentPort.once("message", message => {
+  console.log("Received data from mainWorker...");
+
+  //store data gotten from main thread in database
+  db.collection("Rates").doc(currDate).set({
+    rates: JSON.stringify(message)
+  }).then(() => {
+    //send data back to main thread if operation was successful
+    parentPort.postMessage("Data saved successfully");
   })
+  .catch(err => console.log(err));
 })
-.catch(err => console.log(err));
-
